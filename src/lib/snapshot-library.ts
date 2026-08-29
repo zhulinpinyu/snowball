@@ -61,7 +61,12 @@ export function emptyDatabase(): Database {
 }
 
 function newId(): string {
-  return crypto.randomUUID()
+  // randomUUID 仅在安全上下文（https / localhost）可用；
+  // 局域网 http 或部分微信内核里没有，降级到时间戳+随机数
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 /** 新建一张快照（一个日期），返回新库 */

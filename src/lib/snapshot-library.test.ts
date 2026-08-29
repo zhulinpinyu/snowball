@@ -309,3 +309,20 @@ describe("标的走势", () => {
     expect(listInstruments(db)).toEqual([{ code: "", name: "银行存款" }])
   })
 })
+
+describe("非安全上下文", () => {
+  it("没有 crypto.randomUUID（局域网 http / 部分微信内核）时，创建快照不抛异常", () => {
+    const original = Object.getOwnPropertyDescriptor(crypto, "randomUUID")
+    Object.defineProperty(crypto, "randomUUID", { value: undefined, configurable: true })
+
+    try {
+      let db = emptyDatabase()
+      expect(() => {
+        db = addSnapshot(db, "2025-08-01")
+      }).not.toThrow()
+      expect(listSnapshots(db)).toHaveLength(1)
+    } finally {
+      if (original) Object.defineProperty(crypto, "randomUUID", original)
+    }
+  })
+})
