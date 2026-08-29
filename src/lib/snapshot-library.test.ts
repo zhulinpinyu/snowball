@@ -14,6 +14,8 @@ import {
   totalAssetsSeries,
   snapshotSummaries,
   sharesByDimension,
+  instrumentSeries,
+  listInstruments,
   type Database,
 } from "./snapshot-library"
 
@@ -256,5 +258,54 @@ describe("占比聚合", () => {
       { label: "支付宝", total: 10000 },
       { label: "雪球", total: 5000 },
     ])
+  })
+})
+
+describe("标的走势", () => {
+  function seeded(): Database {
+    let db = emptyDatabase()
+    db = addSnapshot(db, "2025-07-01")
+    const july = listSnapshots(db)[0]
+    db = addHolding(db, july.id, {
+      name: "沪深300指数A", code: "000961", assetType: "基金", owner: "我",
+      platform: "支付宝", marketValue: 10000, cumulativeGain: 500,
+    })
+    // 同一只基金在另一个平台、另一个人名下：按代码归并求和
+    db = addHolding(db, july.id, {
+      name: "沪深300指数A", code: "000961", assetType: "基金", owner: "老婆",
+      platform: "微信", marketValue: 2000, cumulativeGain: -100,
+    })
+    db = addSnapshot(db, "2025-08-01")
+    const august = listSnapshots(db).find((s) => s.date === "2025-08-01")!
+    db = addHolding(db, august.id, {
+      name: "沪深300指数A", code: "000961", assetType: "基金", owner: "我",
+      platform: "支付宝", marketValue: 11000, cumulativeGain: 900,
+    })
+    return db
+  }
+
+  it("同一代码跨平台跨人归并，按快照日期升序求和", () => {
+    expect(instrumentSeries(seeded(), "000961")).toEqual([
+      { date: "2025-07-01", marketValue: 12000, cumulativeGain: 400 },
+      { date: "2025-08-01", marketValue: 11000, cumulativeGain: 900 },
+    ])
+  })
+
+  it("标的列表去重，名称取最近一次出现的", () => {
+    expect(listInstruments(seeded())).toEqual([{ code: "000961", name: "沪深300指数A" }])
+  })
+
+  it("没有代码的持仓按名称归并", () => {
+    let db = emptyDatabase()
+    db = addSnapshot(db, "2025-07-01")
+    const july = listSnapshots(db)[0]
+    db = addHolding(db, july.id, {
+      name: "银行存款", code: "", assetType: "存款", owner: "我",
+      platform: "支付宝", marketValue: 3000, cumulativeGain: 0,
+    })
+    expect(instrumentSeries(db, "银行存款")).toEqual([
+      { date: "2025-07-01", marketValue: 3000, cumulativeGain: 0 },
+    ])
+    expect(listInstruments(db)).toEqual([{ code: "", name: "银行存款" }])
   })
 })

@@ -197,3 +197,43 @@ export function sharesByDimension(
     .map(([label, total]) => ({ label, total }))
     .sort((a, b) => b.total - a.total)
 }
+
+export interface InstrumentPoint {
+  date: string
+  marketValue: number
+  cumulativeGain: number
+}
+
+/** 标的归并键：优先代码，无代码用名称 */
+function instrumentKeyOf(h: Holding): string {
+  return h.code || h.name
+}
+
+/** 单个标的跨快照走势：同代码（或同名称）持仓按快照求和，日期升序 */
+export function instrumentSeries(db: Database, key: string): InstrumentPoint[] {
+  return totalAssetsPointsBySnapshot(db).map((s) => {
+    const matched = db.holdings.filter(
+      (h) => h.snapshotId === s.snapshotId && instrumentKeyOf(h) === key
+    )
+    return {
+      date: s.date,
+      marketValue: matched.reduce((sum, h) => sum + h.marketValue, 0),
+      cumulativeGain: matched.reduce((sum, h) => sum + h.cumulativeGain, 0),
+    }
+  })
+}
+
+/** 全部标的（去重），名称取最近一次出现的 */
+export function listInstruments(db: Database): { code: string; name: string }[] {
+  const byKey = new Map<string, { code: string; name: string }>()
+  for (const s of totalAssetsPointsBySnapshot(db)) {
+    for (const h of db.holdings.filter((h) => h.snapshotId === s.snapshotId)) {
+      byKey.set(instrumentKeyOf(h), { code: h.code, name: h.name })
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, "zh-CN"))
+}
+
+function totalAssetsPointsBySnapshot(db: Database): TotalAssetsPoint[] {
+  return totalAssetsSeries(db)
+}
