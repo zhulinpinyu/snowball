@@ -39,6 +39,7 @@ import { NewSnapshotDialog } from "@/components/NewSnapshotDialog"
 import { Overview } from "@/components/Overview"
 import { Breakdown } from "@/components/Breakdown"
 import { Instruments } from "@/components/Instruments"
+import { DataCard } from "@/components/DataCard"
 import { SnapshotRow } from "@/components/SnapshotRow"
 import { TagManager } from "@/components/TagManager"
 import { deleteHolding, holdingsOf, listSnapshots, type Holding } from "@/lib/snapshot-library"
@@ -56,7 +57,7 @@ function formatYuan(n: number): string {
 }
 
 export default function App() {
-  const { db, update } = useDatabase()
+  const { db, update, replace } = useDatabase()
   const [viewingId, setViewingId] = useState<string | null>(null)
 
   const snapshots = listSnapshots(db)
@@ -89,7 +90,7 @@ export default function App() {
               <TabsTrigger value="breakdown">占比</TabsTrigger>
               <TabsTrigger value="instruments">标的</TabsTrigger>
               <TabsTrigger value="snapshots">快照</TabsTrigger>
-              <TabsTrigger value="tags">标签</TabsTrigger>
+              <TabsTrigger value="settings">设置</TabsTrigger>
             </TabsList>
             <TabsContent value="overview">
               <Overview db={db} onOpenSnapshot={setViewingId} onUpdate={update} />
@@ -108,8 +109,11 @@ export default function App() {
                 onUpdate={update}
               />
             </TabsContent>
-            <TabsContent value="tags">
-              <TagManager db={db} onUpdate={update} />
+            <TabsContent value="settings">
+              <div className="flex flex-col gap-4">
+                <TagManager db={db} onUpdate={update} />
+                <DataCard db={db} onReplace={replace} />
+              </div>
             </TabsContent>
           </Tabs>
         )}

@@ -20,5 +20,11 @@ export function useDatabase() {
     })
   }
 
-  return { db, update }
+  /** 整体替换（导入 JSON 用） */
+  const replace = (next: Database) => {
+    saveDatabase(window.localStorage, next)
+    setDb(next)
+  }
+
+  return { db, update, replace }
 }
