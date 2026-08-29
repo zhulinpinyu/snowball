@@ -77,9 +77,11 @@ export function HoldingFormDialog({ snapshotId, db, onUpdate }: HoldingFormDialo
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>添加持仓</Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={(props) => (
+          <Button {...props}>添加持仓</Button>
+        )}
+      >
       <DialogContent className="max-h-svh overflow-y-auto">
         <DialogHeader>
           <DialogTitle>添加持仓</DialogTitle>

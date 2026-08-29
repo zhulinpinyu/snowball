@@ -33,9 +33,11 @@ export function NewSnapshotDialog({ onCreate }: NewSnapshotDialogProps) {
         if (o) setDate(today())
       }}
     >
-      <DialogTrigger asChild>
-        <Button>新建快照</Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={(props) => (
+          <Button {...props}>新建快照</Button>
+        )}
+      >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>新建快照</DialogTitle>

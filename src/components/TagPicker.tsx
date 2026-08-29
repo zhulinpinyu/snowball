@@ -55,6 +55,7 @@ export function TagPicker({ label, options, value, onChange }: TagPickerProps) {
         <Select
           value={value || undefined}
           onValueChange={(v) => {
+            if (!v) return
             if (v === NEW_OPTION) {
               setCreating(true)
             } else {
