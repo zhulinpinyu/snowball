@@ -43,7 +43,7 @@ export function Overview({ db, onOpenSnapshot, onUpdate }: OverviewProps) {
   const chartData = [...summaries].reverse().map((s) => ({ date: s.date, total: s.total }))
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[3fr,2fr] lg:items-start">
       <Card>
         <CardHeader>
           <CardTitle>家庭总资产</CardTitle>
