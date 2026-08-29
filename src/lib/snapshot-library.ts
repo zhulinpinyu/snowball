@@ -7,6 +7,13 @@
 
 export type TagKind = "owners" | "platforms" | "assetTypes"
 
+/** 标签类别 → 持仓记录字段名 */
+export const TAG_KIND_TO_HOLDING_FIELD: Record<TagKind, "owner" | "platform" | "assetType"> = {
+  owners: "owner",
+  platforms: "platform",
+  assetTypes: "assetType",
+}
+
 export interface Snapshot {
   id: string
   /** 快照日期，格式 YYYY-MM-DD */
@@ -114,7 +121,8 @@ export function addTag(db: Database, kind: TagKind, label: string): Database {
 
 /** 删除未被持仓引用的标签；仍被引用则拒绝 */
 export function deleteTag(db: Database, kind: TagKind, label: string): Database {
-  const inUse = db.holdings.some((h) => h[kind === "owners" ? "owner" : kind === "platforms" ? "platform" : "assetType"] === label)
+  const field = TAG_KIND_TO_HOLDING_FIELD[kind]
+  const inUse = db.holdings.some((h) => h[field] === label)
   if (inUse) {
     throw new Error(`标签「${label}」仍被持仓记录引用，无法删除`)
   }
