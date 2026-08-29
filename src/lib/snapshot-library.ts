@@ -136,3 +136,38 @@ export function deleteTag(db: Database, kind: TagKind, label: string): Database 
   }
   return { ...db, [kind]: db[kind].filter((l) => l !== label) }
 }
+
+export interface TotalAssetsPoint {
+  snapshotId: string
+  date: string
+  total: number
+}
+
+/** 家庭总资产序列：按快照日期升序，总额为各持仓市值之和 */
+export function totalAssetsSeries(db: Database): TotalAssetsPoint[] {
+  return [...db.snapshots]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((s) => ({
+      snapshotId: s.id,
+      date: s.date,
+      total: db.holdings
+        .filter((h) => h.snapshotId === s.id)
+        .reduce((sum, h) => sum + h.marketValue, 0),
+    }))
+}
+
+export interface SnapshotSummary extends TotalAssetsPoint {
+  /** 较上一期快照的总资产涨跌额；第一期无涨跌 */
+  delta: number | null
+}
+
+/** 快照摘要列表（最新在前），含每期总额与较上期涨跌 */
+export function snapshotSummaries(db: Database): SnapshotSummary[] {
+  const series = totalAssetsSeries(db)
+  return [...series]
+    .reverse()
+    .map((point, i) => {
+      const prev = series.length - 1 - i - 1
+      return { ...point, delta: prev >= 0 ? point.total - series[prev].total : null }
+    })
+}

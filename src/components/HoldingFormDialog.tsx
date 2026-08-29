@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -56,26 +56,24 @@ export function HoldingFormDialog({
 }: HoldingFormDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
-  const setOpen = onOpenChange ?? setInternalOpen
-  const [draft, setDraft] = useState<HoldingDraft>(emptyDraft)
-
-  useEffect(() => {
-    if (open) {
-      setDraft(
-        holding
-          ? {
-              name: holding.name,
-              code: holding.code,
-              assetType: holding.assetType,
-              owner: holding.owner,
-              platform: holding.platform,
-              marketValue: String(holding.marketValue),
-              cumulativeGain: String(holding.cumulativeGain),
-            }
-          : emptyDraft
-      )
-    }
-  }, [open, holding])
+  const setOpen = (o: boolean) => {
+    if (o === false) setDraft(emptyDraft)
+    ;(onOpenChange ?? setInternalOpen)(o)
+  }
+  // 编辑模式由父组件按需挂载，新增模式关闭即清空
+  const [draft, setDraft] = useState<HoldingDraft>(() =>
+    holding
+      ? {
+          name: holding.name,
+          code: holding.code,
+          assetType: holding.assetType,
+          owner: holding.owner,
+          platform: holding.platform,
+          marketValue: String(holding.marketValue),
+          cumulativeGain: String(holding.cumulativeGain),
+        }
+      : emptyDraft
+  )
 
   const set = (patch: Partial<HoldingDraft>) => setDraft((d) => ({ ...d, ...patch }))
   const valid =
