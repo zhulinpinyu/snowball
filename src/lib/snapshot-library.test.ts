@@ -1,0 +1,130 @@
+import { describe, it, expect } from "vitest"
+import {
+  emptyDatabase,
+  addSnapshot,
+  addHolding,
+  deleteSnapshot,
+  updateHolding,
+  addTag,
+  deleteTag,
+  listSnapshots,
+  holdingsOf,
+  type Database,
+} from "./snapshot-library"
+
+function dbWithAugustSnapshot(): Database {
+  let db = emptyDatabase()
+  db = addSnapshot(db, "2025-08-01")
+  return db
+}
+
+describe("快照", () => {
+  it("新建快照后，快照列表按日期倒序显示（最新在前）", () => {
+    let db = emptyDatabase()
+    db = addSnapshot(db, "2025-07-01")
+    db = addSnapshot(db, "2025-08-01")
+
+    const dates = listSnapshots(db).map((s) => s.date)
+    expect(dates).toEqual(["2025-08-01", "2025-07-01"])
+  })
+
+  it("删除快照时，其下的持仓记录一并删除", () => {
+    let db = dbWithAugustSnapshot()
+    const snapshot = listSnapshots(db)[0]
+    db = addHolding(db, snapshot.id, {
+      name: "沪深300指数A",
+      code: "000961",
+      assetType: "基金",
+      owner: "我",
+      platform: "支付宝",
+      marketValue: 12000,
+      cumulativeGain: 800,
+    })
+
+    db = deleteSnapshot(db, snapshot.id)
+
+    expect(listSnapshots(db)).toHaveLength(0)
+    expect(holdingsOf(db, snapshot.id)).toHaveLength(0)
+  })
+})
+
+describe("持仓记录", () => {
+  it("向快照添加持仓后，能按快照取回该持仓", () => {
+    let db = dbWithAugustSnapshot()
+    const snapshot = listSnapshots(db)[0]
+
+    db = addHolding(db, snapshot.id, {
+      name: "中证500ETF联接",
+      code: "110020",
+      assetType: "基金",
+      owner: "老婆",
+      platform: "微信",
+      marketValue: 5300,
+      cumulativeGain: -120,
+    })
+
+    const holdings = holdingsOf(db, snapshot.id)
+    expect(holdings).toHaveLength(1)
+    expect(holdings[0]).toMatchObject({
+      name: "中证500ETF联接",
+      code: "110020",
+      owner: "老婆",
+      platform: "微信",
+      marketValue: 5300,
+      cumulativeGain: -120,
+    })
+  })
+
+  it("修改持仓的市值与累计收益后，取回的是新数字（抄错可改）", () => {
+    let db = dbWithAugustSnapshot()
+    const snapshot = listSnapshots(db)[0]
+    db = addHolding(db, snapshot.id, {
+      name: "贵州茅台",
+      code: "600519",
+      assetType: "股票",
+      owner: "我",
+      platform: "雪球",
+      marketValue: 20000,
+      cumulativeGain: 2000,
+    })
+    const holding = holdingsOf(db, snapshot.id)[0]
+
+    db = updateHolding(db, holding.id, { marketValue: 21000, cumulativeGain: 3000 })
+
+    expect(holdingsOf(db, snapshot.id)[0]).toMatchObject({
+      marketValue: 21000,
+      cumulativeGain: 3000,
+    })
+  })
+})
+
+describe("标签", () => {
+  it("新增标签后可列出；删除未被引用的标签成功", () => {
+    let db = emptyDatabase()
+    db = addTag(db, "owners", "我")
+    db = addTag(db, "platforms", "支付宝")
+
+    expect(db.owners).toEqual(["我"])
+    expect(db.platforms).toEqual(["支付宝"])
+
+    db = deleteTag(db, "platforms", "支付宝")
+    expect(db.platforms).toEqual([])
+  })
+
+  it("删除仍被持仓引用的标签被拒绝", () => {
+    let db = dbWithAugustSnapshot()
+    const snapshot = listSnapshots(db)[0]
+    db = addTag(db, "owners", "我")
+    db = addHolding(db, snapshot.id, {
+      name: "沪深300指数A",
+      code: "000961",
+      assetType: "基金",
+      owner: "我",
+      platform: "支付宝",
+      marketValue: 12000,
+      cumulativeGain: 800,
+    })
+
+    expect(() => deleteTag(db, "owners", "我")).toThrow(/引用/)
+  })
+})
