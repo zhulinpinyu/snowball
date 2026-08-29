@@ -69,6 +69,14 @@ export function addSnapshot(db: Database, date: string): Database {
   return { ...db, snapshots: [...db.snapshots, { id: newId(), date }] }
 }
 
+/** 修改快照日期 */
+export function updateSnapshot(db: Database, snapshotId: string, date: string): Database {
+  return {
+    ...db,
+    snapshots: db.snapshots.map((s) => (s.id === snapshotId ? { ...s, date } : s)),
+  }
+}
+
 /** 删除快照时，其下持仓记录一并删除 */
 export function deleteSnapshot(db: Database, snapshotId: string): Database {
   return {

@@ -4,7 +4,9 @@ import {
   addSnapshot,
   addHolding,
   deleteSnapshot,
+  deleteHolding,
   updateHolding,
+  updateSnapshot,
   addTag,
   deleteTag,
   listSnapshots,
@@ -126,5 +128,40 @@ describe("标签", () => {
     })
 
     expect(() => deleteTag(db, "owners", "我")).toThrow(/引用/)
+  })
+})
+
+describe("快照日期修改", () => {
+  it("修改快照日期后，列表按新日期排序", () => {
+    let db = emptyDatabase()
+    db = addSnapshot(db, "2025-07-01")
+    db = addSnapshot(db, "2025-09-01")
+    const july = listSnapshots(db).find((s) => s.date === "2025-07-01")!
+
+    db = updateSnapshot(db, july.id, "2025-08-15")
+
+    expect(listSnapshots(db).map((s) => s.date)).toEqual(["2025-09-01", "2025-08-15"])
+  })
+})
+
+describe("删除单条持仓", () => {
+  it("删除持仓后，快照仍在但持仓少一条", () => {
+    let db = dbWithAugustSnapshot()
+    const snapshot = listSnapshots(db)[0]
+    db = addHolding(db, snapshot.id, {
+      name: "沪深300指数A",
+      code: "000961",
+      assetType: "基金",
+      owner: "我",
+      platform: "支付宝",
+      marketValue: 12000,
+      cumulativeGain: 800,
+    })
+    const holding = holdingsOf(db, snapshot.id)[0]
+
+    db = deleteHolding(db, holding.id)
+
+    expect(listSnapshots(db)).toHaveLength(1)
+    expect(holdingsOf(db, snapshot.id)).toHaveLength(0)
   })
 })

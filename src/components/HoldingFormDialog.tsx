@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -12,12 +12,17 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { TagPicker } from "./TagPicker"
-import { addHolding, addTag, type Database } from "@/lib/snapshot-library"
+import { addHolding, addTag, updateHolding, type Database, type Holding } from "@/lib/snapshot-library"
 
 interface HoldingFormDialogProps {
   snapshotId: string
   db: Database
   onUpdate: (fn: (db: Database) => Database) => void
+  /** 传入则为编辑该持仓，否则为新增 */
+  holding?: Holding
+  /** 受控打开（编辑模式由外部触发） */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 interface HoldingDraft {
@@ -40,10 +45,37 @@ const emptyDraft: HoldingDraft = {
   cumulativeGain: "",
 }
 
-/** 添加持仓：从所属 App 抄录市值与累计收益，标签可从已有中选择或新建 */
-export function HoldingFormDialog({ snapshotId, db, onUpdate }: HoldingFormDialogProps) {
-  const [open, setOpen] = useState(false)
+/** 添加/编辑持仓：从所属 App 抄录市值与累计收益，标签可从已有中选择或新建 */
+export function HoldingFormDialog({
+  snapshotId,
+  db,
+  onUpdate,
+  holding,
+  open: controlledOpen,
+  onOpenChange,
+}: HoldingFormDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = onOpenChange ?? setInternalOpen
   const [draft, setDraft] = useState<HoldingDraft>(emptyDraft)
+
+  useEffect(() => {
+    if (open) {
+      setDraft(
+        holding
+          ? {
+              name: holding.name,
+              code: holding.code,
+              assetType: holding.assetType,
+              owner: holding.owner,
+              platform: holding.platform,
+              marketValue: String(holding.marketValue),
+              cumulativeGain: String(holding.cumulativeGain),
+            }
+          : emptyDraft
+      )
+    }
+  }, [open, holding])
 
   const set = (patch: Partial<HoldingDraft>) => setDraft((d) => ({ ...d, ...patch }))
   const valid =
@@ -61,7 +93,7 @@ export function HoldingFormDialog({ snapshotId, db, onUpdate }: HoldingFormDialo
         const label = draft[kind === "owners" ? "owner" : kind === "platforms" ? "platform" : "assetType"]
         if (label) next = addTag(next, kind, label)
       }
-      return addHolding(next, snapshotId, {
+      const fields = {
         name: draft.name.trim(),
         code: draft.code.trim(),
         assetType: draft.assetType,
@@ -69,22 +101,24 @@ export function HoldingFormDialog({ snapshotId, db, onUpdate }: HoldingFormDialo
         platform: draft.platform,
         marketValue: Number(draft.marketValue),
         cumulativeGain: Number(draft.cumulativeGain || 0),
-      })
+      }
+      return holding ? updateHolding(next, holding.id, fields) : addHolding(next, snapshotId, fields)
     })
-    setDraft(emptyDraft)
     setOpen(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        render={(props) => (
-          <Button {...props}>添加持仓</Button>
-        )}
+        render={
+          holding
+            ? undefined
+            : (props) => <Button {...props}>添加持仓</Button>
+        }
       />
       <DialogContent className="max-h-svh overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>添加持仓</DialogTitle>
+          <DialogTitle>{holding ? "编辑持仓" : "添加持仓"}</DialogTitle>
           <DialogDescription>打开所属 App，照着抄就行。</DialogDescription>
         </DialogHeader>
         <FieldGroup>
