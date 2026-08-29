@@ -37,7 +37,7 @@ export function NewSnapshotDialog({ onCreate }: NewSnapshotDialogProps) {
         render={(props) => (
           <Button {...props}>新建快照</Button>
         )}
-      >
+      />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>新建快照</DialogTitle>
