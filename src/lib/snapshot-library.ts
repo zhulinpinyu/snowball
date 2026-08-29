@@ -171,3 +171,29 @@ export function snapshotSummaries(db: Database): SnapshotSummary[] {
       return { ...point, delta: prev >= 0 ? point.total - series[prev].total : null }
     })
 }
+
+export type BreakdownDimension = "owner" | "platform" | "assetType"
+
+export interface ShareSlice {
+  label: string
+  total: number
+}
+
+/** 占比聚合：某快照内按维度汇总持仓市值，降序；不指定快照则取最新一张 */
+export function sharesByDimension(
+  db: Database,
+  dimension: BreakdownDimension,
+  snapshotId?: string
+): ShareSlice[] {
+  const target =
+    snapshotId ?? [...db.snapshots].sort((a, b) => b.date.localeCompare(a.date))[0]?.id
+  if (!target) return []
+  const totals = new Map<string, number>()
+  for (const h of db.holdings) {
+    if (h.snapshotId !== target) continue
+    totals.set(h[dimension], (totals.get(h[dimension]) ?? 0) + h.marketValue)
+  }
+  return [...totals.entries()]
+    .map(([label, total]) => ({ label, total }))
+    .sort((a, b) => b.total - a.total)
+}

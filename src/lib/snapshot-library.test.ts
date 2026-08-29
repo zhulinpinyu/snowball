@@ -13,6 +13,7 @@ import {
   holdingsOf,
   totalAssetsSeries,
   snapshotSummaries,
+  sharesByDimension,
   type Database,
 } from "./snapshot-library"
 
@@ -213,6 +214,47 @@ describe("总资产趋势", () => {
     db = addSnapshot(db, "2025-07-01")
     expect(totalAssetsSeries(db)).toEqual([
       { snapshotId: expect.any(String), date: "2025-07-01", total: 0 },
+    ])
+  })
+})
+
+describe("占比聚合", () => {
+  function seeded(): Database {
+    let db = emptyDatabase()
+    db = addSnapshot(db, "2025-07-01")
+    const july = listSnapshots(db)[0]
+    db = addHolding(db, july.id, {
+      name: "沪深300指数A", code: "000961", assetType: "基金", owner: "我",
+      platform: "支付宝", marketValue: 10000, cumulativeGain: 500,
+    })
+    db = addHolding(db, july.id, {
+      name: "贵州茅台", code: "600519", assetType: "股票", owner: "老婆",
+      platform: "雪球", marketValue: 5000, cumulativeGain: -200,
+    })
+    db = addSnapshot(db, "2025-08-01")
+    const august = listSnapshots(db).find((s) => s.date === "2025-08-01")!
+    db = addHolding(db, august.id, {
+      name: "沪深300指数A", code: "000961", assetType: "基金", owner: "我",
+      platform: "支付宝", marketValue: 12000, cumulativeGain: 900,
+    })
+    return db
+  }
+
+  it("默认取最新快照，按维度汇总市值，降序排列", () => {
+    expect(sharesByDimension(seeded(), "owner")).toEqual([{ label: "我", total: 12000 }])
+    expect(sharesByDimension(seeded(), "assetType")).toEqual([{ label: "基金", total: 12000 }])
+  })
+
+  it("指定快照时按该快照聚合；同维度多持仓合并求和", () => {
+    const db = seeded()
+    const july = listSnapshots(db).find((s) => s.date === "2025-07-01")!
+    expect(sharesByDimension(db, "owner", july.id)).toEqual([
+      { label: "我", total: 10000 },
+      { label: "老婆", total: 5000 },
+    ])
+    expect(sharesByDimension(db, "platform", july.id)).toEqual([
+      { label: "支付宝", total: 10000 },
+      { label: "雪球", total: 5000 },
     ])
   })
 })

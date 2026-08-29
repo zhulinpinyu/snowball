@@ -37,6 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { HoldingFormDialog } from "@/components/HoldingFormDialog"
 import { NewSnapshotDialog } from "@/components/NewSnapshotDialog"
 import { Overview } from "@/components/Overview"
+import { Breakdown } from "@/components/Breakdown"
 import { SnapshotRow } from "@/components/SnapshotRow"
 import { TagManager } from "@/components/TagManager"
 import { deleteHolding, holdingsOf, listSnapshots, type Holding } from "@/lib/snapshot-library"
@@ -84,11 +85,15 @@ export default function App() {
           <Tabs defaultValue="overview">
             <TabsList className="w-full">
               <TabsTrigger value="overview">总览</TabsTrigger>
+              <TabsTrigger value="breakdown">占比</TabsTrigger>
               <TabsTrigger value="snapshots">快照</TabsTrigger>
               <TabsTrigger value="tags">标签</TabsTrigger>
             </TabsList>
             <TabsContent value="overview">
               <Overview db={db} onOpenSnapshot={setViewingId} onUpdate={update} />
+            </TabsContent>
+            <TabsContent value="breakdown">
+              <Breakdown db={db} />
             </TabsContent>
             <TabsContent value="snapshots">
               <SnapshotList
