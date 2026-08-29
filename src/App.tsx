@@ -38,6 +38,7 @@ import { HoldingFormDialog } from "@/components/HoldingFormDialog"
 import { NewSnapshotDialog } from "@/components/NewSnapshotDialog"
 import { Overview } from "@/components/Overview"
 import { Breakdown } from "@/components/Breakdown"
+import { Instruments } from "@/components/Instruments"
 import { SnapshotRow } from "@/components/SnapshotRow"
 import { TagManager } from "@/components/TagManager"
 import { deleteHolding, holdingsOf, listSnapshots, type Holding } from "@/lib/snapshot-library"
@@ -86,6 +87,7 @@ export default function App() {
             <TabsList className="w-full">
               <TabsTrigger value="overview">总览</TabsTrigger>
               <TabsTrigger value="breakdown">占比</TabsTrigger>
+              <TabsTrigger value="instruments">标的</TabsTrigger>
               <TabsTrigger value="snapshots">快照</TabsTrigger>
               <TabsTrigger value="tags">标签</TabsTrigger>
             </TabsList>
@@ -94,6 +96,9 @@ export default function App() {
             </TabsContent>
             <TabsContent value="breakdown">
               <Breakdown db={db} />
+            </TabsContent>
+            <TabsContent value="instruments">
+              <Instruments db={db} />
             </TabsContent>
             <TabsContent value="snapshots">
               <SnapshotList
