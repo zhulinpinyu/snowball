@@ -16,8 +16,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { HoldingFormDialog } from "@/components/HoldingFormDialog"
 import { NewSnapshotDialog } from "@/components/NewSnapshotDialog"
+import { TagManager } from "@/components/TagManager"
 import { holdingsOf, listSnapshots, type Holding } from "@/lib/snapshot-library"
 import { useDatabase } from "@/lib/use-database"
 
@@ -65,12 +67,23 @@ export default function App() {
         {viewing ? (
           <SnapshotDetail snapshotId={viewing.id} db={db} onUpdate={update} />
         ) : (
-          <SnapshotList
-            snapshotDates={snapshots.map((s) => ({ id: s.id, date: s.date }))}
-            countOf={(id) => holdingsOf(db, id).length}
-            onOpen={setViewingId}
-            onCreate={(fn) => update(fn)}
-          />
+          <Tabs defaultValue="snapshots">
+            <TabsList className="w-full">
+              <TabsTrigger value="snapshots">快照</TabsTrigger>
+              <TabsTrigger value="tags">标签</TabsTrigger>
+            </TabsList>
+            <TabsContent value="snapshots">
+              <SnapshotList
+                snapshotDates={snapshots.map((s) => ({ id: s.id, date: s.date }))}
+                countOf={(id) => holdingsOf(db, id).length}
+                onOpen={setViewingId}
+                onCreate={(fn) => update(fn)}
+              />
+            </TabsContent>
+            <TabsContent value="tags">
+              <TagManager db={db} onUpdate={update} />
+            </TabsContent>
+          </Tabs>
         )}
       </main>
     </div>
