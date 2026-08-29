@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { ArrowLeftIcon, MoreVerticalIcon, SnowflakeIcon } from "lucide-react"
 import {
   AlertDialog,
@@ -11,14 +11,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,8 +25,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import {
   Table,
   TableBody,
@@ -46,15 +36,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { HoldingFormDialog } from "@/components/HoldingFormDialog"
 import { NewSnapshotDialog } from "@/components/NewSnapshotDialog"
+import { Overview } from "@/components/Overview"
+import { SnapshotRow } from "@/components/SnapshotRow"
 import { TagManager } from "@/components/TagManager"
-import {
-  deleteHolding,
-  deleteSnapshot,
-  holdingsOf,
-  listSnapshots,
-  updateSnapshot,
-  type Holding,
-} from "@/lib/snapshot-library"
+import { deleteHolding, holdingsOf, listSnapshots, type Holding } from "@/lib/snapshot-library"
 import { useDatabase } from "@/lib/use-database"
 
 /** 红涨绿跌（国内习惯）：赚为红、亏为绿 */
@@ -74,11 +59,6 @@ export default function App() {
 
   const snapshots = listSnapshots(db)
   const viewing = snapshots.find((s) => s.id === viewingId) ?? null
-
-  // 快照不存在（被删除或数据被导入覆盖）时回到列表
-  useEffect(() => {
-    if (viewingId && !viewing) setViewingId(null)
-  }, [viewingId, viewing])
 
   return (
     <div className="flex min-h-svh flex-col bg-background text-foreground">
@@ -101,11 +81,15 @@ export default function App() {
         {viewing ? (
           <SnapshotDetail snapshotId={viewing.id} db={db} onUpdate={update} />
         ) : (
-          <Tabs defaultValue="snapshots">
+          <Tabs defaultValue="overview">
             <TabsList className="w-full">
+              <TabsTrigger value="overview">总览</TabsTrigger>
               <TabsTrigger value="snapshots">快照</TabsTrigger>
               <TabsTrigger value="tags">标签</TabsTrigger>
             </TabsList>
+            <TabsContent value="overview">
+              <Overview db={db} onOpenSnapshot={setViewingId} onUpdate={update} />
+            </TabsContent>
             <TabsContent value="snapshots">
               <SnapshotList
                 snapshots={snapshots}
@@ -132,9 +116,6 @@ interface SnapshotListProps {
 }
 
 function SnapshotList({ snapshots, db, onOpen, onUpdate }: SnapshotListProps) {
-  const [editing, setEditing] = useState<{ id: string; date: string } | null>(null)
-  const [deleting, setDeleting] = useState<{ id: string; date: string } | null>(null)
-
   if (snapshots.length === 0) {
     return (
       <Empty>
@@ -155,89 +136,17 @@ function SnapshotList({ snapshots, db, onOpen, onUpdate }: SnapshotListProps) {
       <NewSnapshotDialog onCreate={onUpdate} />
       <div className="flex flex-col divide-y rounded-lg border">
         {snapshots.map((s) => (
-          <div key={s.id} className="flex items-center">
-            <button
-              className="flex flex-1 items-center justify-between px-4 py-3 text-left hover:bg-muted/50"
-              onClick={() => onOpen(s.id)}
-            >
-              <span className="font-medium">{s.date}</span>
-              <span className="text-muted-foreground text-sm">{holdingsOf(db, s.id).length} 条持仓</span>
-            </button>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={(props) => (
-                  <Button variant="ghost" size="icon" aria-label="快照操作" {...props}>
-                    <MoreVerticalIcon data-icon="inline-start" />
-                  </Button>
-                )}
-              />
-              <DropdownMenuContent align="end">
-                <DropdownMenuGroup>
-                  <DropdownMenuItem onClick={() => setEditing({ id: s.id, date: s.date })}>
-                    修改日期
-                  </DropdownMenuItem>
-                  <DropdownMenuItem variant="destructive" onClick={() => setDeleting({ id: s.id, date: s.date })}>
-                    删除快照
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          <SnapshotRow
+            key={s.id}
+            snapshotId={s.id}
+            date={s.date}
+            title={s.date}
+            summary={`${holdingsOf(db, s.id).length} 条持仓`}
+            onOpen={() => onOpen(s.id)}
+            onUpdate={onUpdate}
+          />
         ))}
       </div>
-
-      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>修改快照日期</DialogTitle>
-            <DialogDescription>快照内的持仓保持不变。</DialogDescription>
-          </DialogHeader>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="edit-snapshot-date">快照日期</FieldLabel>
-              <Input
-                id="edit-snapshot-date"
-                type="date"
-                value={editing?.date ?? ""}
-                onChange={(e) => editing && setEditing({ ...editing, date: e.target.value })}
-              />
-            </Field>
-          </FieldGroup>
-          <DialogFooter>
-            <Button
-              disabled={!editing?.date}
-              onClick={() => {
-                if (editing) onUpdate((db) => updateSnapshot(db, editing.id, editing.date))
-                setEditing(null)
-              }}
-            >
-              保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除 {deleting?.date} 的快照？</AlertDialogTitle>
-            <AlertDialogDescription>
-              其下的持仓记录会一并删除，无法恢复。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (deleting) onUpdate((db) => deleteSnapshot(db, deleting.id))
-                setDeleting(null)
-              }}
-            >
-              删除
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }
@@ -323,14 +232,16 @@ function SnapshotDetail({ snapshotId, db, onUpdate }: SnapshotDetailProps) {
         </>
       )}
 
-      <HoldingFormDialog
-        snapshotId={snapshotId}
-        db={db}
-        onUpdate={onUpdate}
-        holding={editingHolding ?? undefined}
-        open={!!editingHolding}
-        onOpenChange={(o) => !o && setEditingHolding(null)}
-      />
+      {editingHolding && (
+        <HoldingFormDialog
+          snapshotId={snapshotId}
+          db={db}
+          onUpdate={onUpdate}
+          holding={editingHolding}
+          open
+          onOpenChange={(o) => !o && setEditingHolding(null)}
+        />
+      )}
 
       <AlertDialog open={!!deletingHolding} onOpenChange={(o) => !o && setDeletingHolding(null)}>
         <AlertDialogContent>

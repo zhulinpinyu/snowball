@@ -11,6 +11,8 @@ import {
   deleteTag,
   listSnapshots,
   holdingsOf,
+  totalAssetsSeries,
+  snapshotSummaries,
   type Database,
 } from "./snapshot-library"
 
@@ -163,5 +165,54 @@ describe("删除单条持仓", () => {
 
     expect(listSnapshots(db)).toHaveLength(1)
     expect(holdingsOf(db, snapshot.id)).toHaveLength(0)
+  })
+})
+
+describe("总资产趋势", () => {
+  function seedTwoMonths() {
+    let db = emptyDatabase()
+    let july = addSnapshot(db, "2025-07-01")
+    const julySnap = listSnapshots(july)[0]
+    july = addHolding(july, julySnap.id, {
+      name: "沪深300指数A", code: "000961", assetType: "基金", owner: "我",
+      platform: "支付宝", marketValue: 10000, cumulativeGain: 500,
+    })
+    july = addHolding(july, julySnap.id, {
+      name: "贵州茅台", code: "600519", assetType: "股票", owner: "老婆",
+      platform: "雪球", marketValue: 5000, cumulativeGain: -200,
+    })
+    let august = addSnapshot(july, "2025-08-01")
+    const augSnap = listSnapshots(august).find((s) => s.date === "2025-08-01")!
+    august = addHolding(august, augSnap.id, {
+      name: "沪深300指数A", code: "000961", assetType: "基金", owner: "我",
+      platform: "支付宝", marketValue: 11000, cumulativeGain: 900,
+    })
+    august = addHolding(august, augSnap.id, {
+      name: "贵州茅台", code: "600519", assetType: "股票", owner: "老婆",
+      platform: "雪球", marketValue: 5500, cumulativeGain: 100,
+    })
+    return august
+  }
+
+  it("总资产序列按日期升序，总额为各持仓市值之和", () => {
+    const series = totalAssetsSeries(seedTwoMonths())
+    expect(series).toEqual([
+      { snapshotId: expect.any(String), date: "2025-07-01", total: 15000 },
+      { snapshotId: expect.any(String), date: "2025-08-01", total: 16500 },
+    ])
+  })
+
+  it("快照列表带较上期的涨跌额：第一期无涨跌，第二期 +1500", () => {
+    const summaries = snapshotSummaries(seedTwoMonths())
+    expect(summaries[0]).toMatchObject({ date: "2025-08-01", total: 16500, delta: 1500 })
+    expect(summaries[1]).toMatchObject({ date: "2025-07-01", total: 15000, delta: null })
+  })
+
+  it("空快照也出现在趋势里，总额为 0", () => {
+    let db = emptyDatabase()
+    db = addSnapshot(db, "2025-07-01")
+    expect(totalAssetsSeries(db)).toEqual([
+      { snapshotId: expect.any(String), date: "2025-07-01", total: 0 },
+    ])
   })
 })
