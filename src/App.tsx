@@ -40,21 +40,10 @@ import { Overview } from "@/components/Overview"
 import { Breakdown } from "@/components/Breakdown"
 import { Instruments } from "@/components/Instruments"
 import { DataCard } from "@/components/DataCard"
-import { SnapshotRow } from "@/components/SnapshotRow"
+import { SnapshotRow, deltaClass, formatYuan } from "@/components/SnapshotRow"
 import { TagManager } from "@/components/TagManager"
 import { deleteHolding, holdingsOf, listSnapshots, type Holding } from "@/lib/snapshot-library"
 import { useDatabase } from "@/lib/use-database"
-
-/** 红涨绿跌（国内习惯）：赚为红、亏为绿 */
-function gainClass(gain: number): string {
-  if (gain > 0) return "text-red-600"
-  if (gain < 0) return "text-emerald-600"
-  return "text-muted-foreground"
-}
-
-function formatYuan(n: number): string {
-  return n.toLocaleString("zh-CN", { maximumFractionDigits: 2 })
-}
 
 export default function App() {
   const { db, update, replace } = useDatabase()
@@ -80,7 +69,7 @@ export default function App() {
         {viewing && <h1 className="text-lg font-semibold">{viewing.date} 快照</h1>}
       </header>
 
-      <main className="flex flex-1 flex-col px-4 py-4">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-4">
         {viewing ? (
           <SnapshotDetail snapshotId={viewing.id} db={db} onUpdate={update} />
         ) : (
@@ -110,7 +99,7 @@ export default function App() {
               />
             </TabsContent>
             <TabsContent value="settings">
-              <div className="flex flex-col gap-4">
+              <div className="grid gap-4 md:grid-cols-2 md:items-start">
                 <TagManager db={db} onUpdate={update} />
                 <DataCard db={db} onReplace={replace} />
               </div>
@@ -187,7 +176,7 @@ function SnapshotDetail({ snapshotId, db, onUpdate }: SnapshotDetailProps) {
             <span className="text-muted-foreground">总市值</span>
             <span className="font-semibold">{formatYuan(totalValue)}</span>
             <span className="text-muted-foreground">总收益</span>
-            <span className={`font-semibold ${gainClass(totalGain)}`}>
+            <span className={`font-semibold ${deltaClass(totalGain)}`}>
               {totalGain > 0 ? "+" : ""}
               {formatYuan(totalGain)}
             </span>
@@ -216,7 +205,7 @@ function SnapshotDetail({ snapshotId, db, onUpdate }: SnapshotDetailProps) {
                     </div>
                   </TableCell>
                   <TableCell className="text-right">{formatYuan(h.marketValue)}</TableCell>
-                  <TableCell className={`text-right font-medium ${gainClass(h.cumulativeGain)}`}>
+                  <TableCell className={`text-right font-medium ${deltaClass(h.cumulativeGain)}`}>
                     {h.cumulativeGain > 0 ? "+" : ""}
                     {formatYuan(h.cumulativeGain)}
                   </TableCell>

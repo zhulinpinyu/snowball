@@ -9,7 +9,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
-import { formatYuan } from "@/components/SnapshotRow"
+import { deltaClass, formatYuan } from "@/components/SnapshotRow"
 import {
   instrumentSeries,
   listInstruments,
@@ -51,7 +51,7 @@ export function Instruments({ db }: InstrumentsProps) {
   const chartData = selectedKey ? instrumentSeries(db, selectedKey) : []
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={selected ? "flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start" : "flex flex-col gap-4"}>
       <div className="flex flex-col divide-y rounded-lg border">
         {instruments.map((instrument) => {
           const key = instrument.code || instrument.name
@@ -76,15 +76,7 @@ export function Instruments({ db }: InstrumentsProps) {
               </span>
               <span className="flex items-baseline gap-2">
                 <span>{formatYuan(latestTotal)}</span>
-                <span
-                  className={
-                    latestGain > 0
-                      ? "text-sm text-red-600"
-                      : latestGain < 0
-                        ? "text-sm text-emerald-600"
-                        : "text-sm text-muted-foreground"
-                  }
-                >
+                <span className={`text-sm ${deltaClass(latestGain)}`}>
                   {latestGain > 0 ? "+" : ""}
                   {formatYuan(latestGain)}
                 </span>
