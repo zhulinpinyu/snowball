@@ -100,13 +100,15 @@ export function BreakdownPage({ db, quotes, onGoRecord }: BreakdownPageProps) {
           <CardDescription>按最新实时行情计算，点击分块看明细</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <ChartContainer config={config} className="mx-auto aspect-square max-h-64 w-full">
+          <ChartContainer config={config} className="mx-auto h-64 w-full">
             <PieChart>
               <ChartTooltip content={<ChartTooltipContent hideLabel />} />
               <Pie
                 data={chartData}
                 dataKey="total"
                 nameKey="label"
+                cx="50%"
+                cy="50%"
                 onClick={(slice) => {
                   const label = slice?.name as string | undefined
                   setSelected(label === selected ? null : (label ?? null))
@@ -115,7 +117,7 @@ export function BreakdownPage({ db, quotes, onGoRecord }: BreakdownPageProps) {
               />
             </PieChart>
           </ChartContainer>
-          <div className="flex flex-wrap justify-center gap-2">
+          <div className="mt-1 flex flex-wrap justify-center gap-2">
             {shares.map((s) => (
               <button
                 key={s.label}
