@@ -12,16 +12,19 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { type Database } from "@/lib/snapshot-library"
-import { isValidDatabase } from "@/lib/storage"
+import { type Database } from "@/lib/ledger"
+import { isLegacyV2, isValidDatabase, migrateLegacyV2 } from "@/lib/storage"
 
 interface DataCardProps {
   db: Database
   onReplace: (db: Database) => void
 }
 
-function isDatabase(value: unknown): value is Database {
-  return isValidDatabase(value)
+function toDatabase(value: unknown): Database | null {
+  if (isValidDatabase(value)) return value
+  // 早期（无标的库）导出的备份：导入时自动迁移
+  if (isLegacyV2(value)) return migrateLegacyV2(value)
+  return null
 }
 
 /** 数据备份：导出全部数据为 JSON，导入则整体覆盖（先确认） */
@@ -48,8 +51,9 @@ export function DataCard({ db, onReplace }: DataCardProps) {
   const onFile = async (file: File) => {
     try {
       const parsed: unknown = JSON.parse(await file.text())
-      if (isDatabase(parsed)) {
-        setPendingImport(parsed)
+      const imported = toDatabase(parsed)
+      if (imported) {
+        setPendingImport(imported)
       } else {
         setError("文件格式不对，不是 Snowball 导出的数据")
       }
@@ -88,8 +92,8 @@ export function DataCard({ db, onReplace }: DataCardProps) {
         </div>
         {error && <p className="text-destructive text-sm">{error}</p>}
         <p className="text-muted-foreground text-sm">
-          {db.snapshots.length} 张快照 · {db.holdings.length} 条持仓
-          {db.snapshots.length === 0 && "（当前为空）"}
+          {db.positions.length} 个持仓 · {db.accounts.length} 个现金账户
+          {db.positions.length === 0 && db.accounts.length === 0 && "（当前为空）"}
         </p>
       </CardContent>
 
@@ -98,8 +102,8 @@ export function DataCard({ db, onReplace }: DataCardProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>导入并覆盖现有数据？</AlertDialogTitle>
             <AlertDialogDescription>
-              将导入 {pendingImport?.snapshots.length ?? 0} 张快照、
-              {pendingImport?.holdings.length ?? 0} 条持仓，当前数据会被整体替换。
+              将导入 {pendingImport?.positions.length ?? 0} 个持仓、
+              {pendingImport?.accounts.length ?? 0} 个现金账户，当前数据会被整体替换。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -5,12 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { addTag, deleteTag, TAG_KIND_TO_HOLDING_FIELD, type Database, type TagKind } from "@/lib/snapshot-library"
+import { addTag, deleteTag, type Database, type TagKind } from "@/lib/ledger"
 
 const KINDS: { kind: TagKind; title: string; description: string }[] = [
-  { kind: "owners", title: "所属人", description: "家里谁的持仓" },
-  { kind: "platforms", title: "平台", description: "钱放在哪个 App" },
-  { kind: "assetTypes", title: "资产类型", description: "基金、股票、存款…" },
+  { kind: "owners", title: "所属人", description: "家里谁的持仓/账户" },
+  { kind: "platforms", title: "平台", description: "钱放在哪个 App / 银行" },
 ]
 
 interface TagManagerProps {
@@ -18,7 +17,7 @@ interface TagManagerProps {
   onUpdate: (fn: (db: Database) => Database) => void
 }
 
-/** 标签管理：所属人/平台/资产类型的增删；被持仓引用的标签不可删 */
+/** 标签管理：所属人/平台的增删；被持仓或现金账户引用的标签不可删 */
 export function TagManager({ db, onUpdate }: TagManagerProps) {
   return (
     <div className="flex flex-col gap-4">
@@ -39,8 +38,10 @@ interface TagSectionProps {
 
 function TagSection({ kind, title, description, db, onUpdate }: TagSectionProps) {
   const [draft, setDraft] = useState("")
-  const field = TAG_KIND_TO_HOLDING_FIELD[kind]
-  const usedLabels = new Set(db.holdings.map((h) => h[field]))
+  const used =
+    kind === "owners"
+      ? new Set([...db.positions.map((p) => p.owner), ...db.accounts.map((a) => a.owner)])
+      : new Set([...db.positions.map((p) => p.platform), ...db.accounts.map((a) => a.platform)])
   const labels = db[kind]
 
   const add = () => {
@@ -63,7 +64,7 @@ function TagSection({ kind, title, description, db, onUpdate }: TagSectionProps)
         ) : (
           <div className="flex flex-wrap gap-2">
             {labels.map((label) => {
-              const inUse = usedLabels.has(label)
+              const inUse = used.has(label)
               return (
                 <Badge key={label} variant="secondary" className="gap-1 py-1 pr-1 pl-2">
                   {label}
@@ -71,7 +72,7 @@ function TagSection({ kind, title, description, db, onUpdate }: TagSectionProps)
                     variant="ghost"
                     size="icon"
                     className="size-4 rounded-full"
-                    aria-label={inUse ? `「${label}」仍被持仓引用，不可删除` : `删除「${label}」`}
+                    aria-label={inUse ? `「${label}」仍被引用，不可删除` : `删除「${label}」`}
                     disabled={inUse}
                     onClick={() => onUpdate((current) => deleteTag(current, kind, label))}
                   >

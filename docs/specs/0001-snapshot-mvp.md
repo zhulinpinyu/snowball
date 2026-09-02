@@ -1,5 +1,7 @@
 # Spec 0001 — Snowball 家庭资产快照（MVP）
 
+> 已被 Spec 0002 取代（v1 资产版：持仓 × 实时现价 + 现金账户）；本文保留作历史。
+
 Label: ready-for-agent
 
 ## Problem Statement
