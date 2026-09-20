@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>写入演示数据 · 家庭资产账本</title>
+  </head>
+  <body>
+    <p id="msg" style="font-family: sans-serif; padding: 16px">正在写入演示数据…</p>
+    <script type="module">
+      // 仅开发环境可用：Vite 生产构建只以 index.html 为入口，本文件不会被打包上线
+      import { seedDemoDatabase } from "/src/lib/demo.ts"
+      import { saveDatabase, STORAGE_KEY } from "/src/lib/storage.ts"
+
+      // 防呆：覆盖前把你现有的数据备份到另一个 key，万一要找回可用下面这行恢复
+      const existing = window.localStorage.getItem(STORAGE_KEY)
+      if (existing) {
+        window.localStorage.setItem(`${STORAGE_KEY}:backup-before-demo`, existing)
+      }
+      saveDatabase(window.localStorage, seedDemoDatabase())
+      document.getElementById("msg").textContent = existing
+        ? "演示数据已写入（旧数据已备份到 snowball:database:backup-before-demo），正在打开…"
+        : "演示数据已写入，正在打开…"
+      location.replace("./index.html")
+    </script>
+  </body>
+</html>
