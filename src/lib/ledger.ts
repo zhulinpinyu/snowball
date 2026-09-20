@@ -1,9 +1,10 @@
 /**
  * ledger —— Snowball v1 领域核心（纯函数模块）。
  *
- * 术语以 CONTEXT.md 为准（Spec 0002 / ADR 0002）：
+ * 术语以 CONTEXT.md 为准（Spec 0002 / ADR 0002 / ADR 0004）：
  * 持仓 = 基金/股票（份额 + 持仓成本价，手维护）；现金账户 = 余额随时改；
- * 记录点 = 一次改动产生的带日期历史条目（upsert 按 同实体+同日期，可删改纠错）；
+ * 记录点 = 一次人工改动产生的带日期历史条目（upsert 按 同实体+同日期，可删改纠错）；
+ * 估值快照 = 刷新行情后自动落下的「某持仓在某行情日的现价」（ADR 0004），只补价格历史；
  * 现价由行情层注入（Quotes），市值 = 份额 × 现价，浮动盈亏 = (现价 − 成本) × 份额。
  * 所有函数均为纯函数：接收 Database，返回新 Database，不修改入参。
  */
@@ -62,12 +63,31 @@ export interface CashPoint {
   balance: number
 }
 
+/**
+ * 估值快照：某个持仓在某个「行情日期」的真实现价（自动落点，非人工改动）。
+ * 日期取行情自带的日期（基金=净值日期、股票=交易日），不是打开 App 的日期，
+ * 因此周末/停牌不会造出假点；同 (持仓, 行情日期) 只保留一个点（upsert）。
+ * 份额/成本仍以人工记录点为准，快照只补价格历史。
+ */
+export interface ValuationPoint {
+  id: string
+  positionId: string
+  /** 行情日期 YYYY-MM-DD */
+  date: string
+  /** 该行情日的现价 */
+  price: number
+}
+
 export interface Database {
   instruments: Instrument[]
   positions: Position[]
   accounts: CashAccount[]
   positionPoints: PositionPoint[]
   cashPoints: CashPoint[]
+  /** 每日自动估值快照（价格历史），驱动估值曲线的日常采样 */
+  valuationPoints: ValuationPoint[]
+  /** 是否在刷新行情后自动落每日估值快照（默认开） */
+  autoValuation: boolean
   owners: string[]
   platforms: string[]
 }
@@ -79,6 +99,8 @@ export function emptyDatabase(): Database {
     accounts: [],
     positionPoints: [],
     cashPoints: [],
+    valuationPoints: [],
+    autoValuation: true,
     owners: [],
     platforms: [],
   }
@@ -164,12 +186,13 @@ export function addPosition(db: Database, input: NewPosition): Database {
   }
 }
 
-/** 删除持仓，其下记录点一并删除 */
+/** 删除持仓，其下记录点与估值快照一并删除 */
 export function deletePosition(db: Database, positionId: string): Database {
   return {
     ...db,
     positions: db.positions.filter((p) => p.id !== positionId),
     positionPoints: db.positionPoints.filter((p) => p.positionId !== positionId),
+    valuationPoints: db.valuationPoints.filter((p) => p.positionId !== positionId),
   }
 }
 
@@ -245,6 +268,32 @@ export function recordCash(db: Database, accountId: string, date: string, balanc
   return { ...db, cashPoints: [...db.cashPoints, point] }
 }
 
+/**
+ * 落一个估值快照：按 (持仓, 行情日期) upsert，价格没变则原样返回（避免无意义的重渲染/写盘）。
+ */
+export function recordValuationPoint(
+  db: Database,
+  positionId: string,
+  date: string,
+  price: number
+): Database {
+  const idx = findPoint(db.valuationPoints, "positionId", positionId, date)
+  if (idx >= 0) {
+    if (db.valuationPoints[idx].price === price) return db
+    const points = [...db.valuationPoints]
+    points[idx] = { ...points[idx], price }
+    return { ...db, valuationPoints: points }
+  }
+  const point: ValuationPoint = { id: newId(), positionId, date, price }
+  return { ...db, valuationPoints: [...db.valuationPoints, point] }
+}
+
+/** 打开/关闭「刷新行情后自动落每日估值快照」 */
+export function setAutoValuation(db: Database, enabled: boolean): Database {
+  if (db.autoValuation === enabled) return db
+  return { ...db, autoValuation: enabled }
+}
+
 /** 删除某持仓记录点（纠错） */
 export function deletePositionPoint(db: Database, pointId: string): Database {
   return { ...db, positionPoints: db.positionPoints.filter((p) => p.id !== pointId) }
@@ -278,11 +327,23 @@ export function latestCashPoint(db: Database, accountId: string): CashPoint | nu
   return cashPointAsOf(db, accountId, "\uFFFF")
 }
 
-/** 全部记录点日期（升序去重），估值曲线的采样点 */
+/** 某持仓日期不超过 limit 的最近一个估值快照 */
+export function valuationPointAsOf(
+  db: Database,
+  positionId: string,
+  limit: string
+): ValuationPoint | null {
+  return db.valuationPoints
+    .filter((p) => p.positionId === positionId && p.date <= limit)
+    .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null
+}
+
+/** 全部采样点日期（升序去重）：人工记录点 ∪ 估值快照日期 */
 export function pointDates(db: Database): string[] {
   const dates = new Set<string>()
   for (const p of db.positionPoints) dates.add(p.date)
   for (const p of db.cashPoints) dates.add(p.date)
+  for (const p of db.valuationPoints) dates.add(p.date)
   return [...dates].sort()
 }
 
@@ -293,18 +354,40 @@ export interface AsOfTotal {
   incomplete: boolean
 }
 
-/** 某日期的家庭资产：每个持仓取 ≤date 最近一个记录点，按其记录时价格估值；现金取 ≤date 最近余额 */
+/**
+ * 某持仓在 date 用于估值的价格，优先级：
+ * 1) 该日有手工记录点且当时取到现价 → 用那时的记录价（人工点优先）
+ * 2) 否则用 ≤date 最近的估值快照价
+ * 3) 都没有 → 退回 as-of 手工记录点里存的记录价（可能为 null）
+ */
+function priceForDate(
+  db: Database,
+  positionId: string,
+  date: string,
+  asOfPoint: PositionPoint
+): number | null {
+  const manualOnDate = db.positionPoints.find(
+    (p) => p.positionId === positionId && p.date === date
+  )
+  if (manualOnDate && manualOnDate.priceAtRecord !== null) return manualOnDate.priceAtRecord
+  const snapshot = valuationPointAsOf(db, positionId, date)
+  if (snapshot) return snapshot.price
+  return asOfPoint.priceAtRecord
+}
+
+/** 某日期的家庭资产：每个持仓取 ≤date 最近一个人工记录点的份额，按该日价格估值；现金取 ≤date 最近余额 */
 export function asOfTotal(db: Database, date: string): AsOfTotal {
   let total = 0
   let incomplete = false
   for (const pos of db.positions) {
     const point = positionPointAsOf(db, pos.id, date)
     if (!point) continue
-    if (point.priceAtRecord === null) {
+    const price = priceForDate(db, pos.id, date, point)
+    if (price === null) {
       incomplete = true
       continue
     }
-    total += point.shares * point.priceAtRecord
+    total += point.shares * price
   }
   for (const acc of db.accounts) {
     const point = cashPointAsOf(db, acc.id, date)
@@ -320,9 +403,40 @@ export interface SeriesPoint {
   incomplete: boolean
 }
 
-/** 估值曲线：以每个记录点日期为采样点，逐日算 as-of 家庭资产（升序） */
+/** 估值曲线：以每个采样点日期（人工记录点 ∪ 估值快照）逐日算 as-of 家庭资产（升序） */
 export function valuationSeries(db: Database): SeriesPoint[] {
   return pointDates(db).map((date) => ({ date, ...asOfTotal(db, date) }))
+}
+
+/** 行情层交给自动落点的最小信息（与 use-quotes 的 QuoteView 结构兼容） */
+export interface DailyQuote {
+  price: number
+  /** 行情日期 YYYY-MM-DD；未知为 null */
+  date: string | null
+  /** true = 行情不可用、用的是回退价，不落快照 */
+  stale: boolean
+}
+
+/**
+ * 自动落每日估值快照：对每个拿到「真实行情」（非 stale 且有行情日期）的持仓，
+ * 按行情日期 upsert 一个估值点。缺价/未更新的持仓当天跳过，曲线会标 incomplete，
+ * 绝不把回退价写进历史。开关关闭时原样返回；全部无变化时返回原库（不触发写盘）。
+ */
+export function recordDailyValuations(
+  db: Database,
+  quotes: Record<string, DailyQuote>
+): Database {
+  if (!db.autoValuation) return db
+  // 只给已经记过份额/成本的持仓落快照：刚建好还没记份额的持仓不该产生采样点
+  const held = new Set(db.positionPoints.map((p) => p.positionId))
+  let next = db
+  for (const pos of db.positions) {
+    if (!held.has(pos.id)) continue
+    const quote = quotes[pos.id]
+    if (!quote || quote.stale || quote.date === null) continue
+    next = recordValuationPoint(next, pos.id, quote.date, quote.price)
+  }
+  return next
 }
 
 /** 行情层注入的现价：stale=true 表示行情不可用、用的是上次取值/回退价 */

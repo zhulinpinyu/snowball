@@ -13,13 +13,23 @@ export interface QuoteView extends QuoteData {
  * 单个持仓拉取失败时回退到 该持仓最近记录点里存的价格（再没有就沿用上次成功的价），
  * 并标记 stale=true（对应 ADR 0002 的降级策略：断网不阻断查看）。
  * 仅在持仓集合（增删/代码变化）时自动重拉；份额/成本等记录变化不触发。
+ *
+ * onFreshQuotes：每次拉取完成后回调（含失败回退），供上层自动落每日估值快照；
+ * 上层自行过滤 stale / 无行情日期的项。
  */
-export function useQuotes(db: Database) {
+export function useQuotes(
+  db: Database,
+  onFreshQuotes?: (quotes: Record<string, QuoteView>) => void
+) {
   const dbRef = useRef(db)
   useEffect(() => {
     dbRef.current = db
   })
   const quotesRef = useRef<Record<string, QuoteView>>({})
+  const onFreshRef = useRef(onFreshQuotes)
+  useEffect(() => {
+    onFreshRef.current = onFreshQuotes
+  })
   const [quotes, setQuotes] = useState<Record<string, QuoteView>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -68,6 +78,7 @@ export function useQuotes(db: Database) {
     setQuotes(next)
     setLoading(false)
     if (failed > 0) setError(failed === positions.length ? "行情不可用，按上次记录价显示" : "部分行情未更新")
+    onFreshRef.current?.(next)
   }, [])
 
   useEffect(() => {

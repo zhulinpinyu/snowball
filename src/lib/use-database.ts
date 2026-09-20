@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { type Database } from "./ledger"
 import { loadDatabase, saveDatabase } from "./storage"
 
@@ -9,19 +9,20 @@ import { loadDatabase, saveDatabase } from "./storage"
 export function useDatabase() {
   const [db, setDb] = useState<Database>(() => loadDatabase(window.localStorage))
 
-  const update = (fn: (db: Database) => Database) => {
+  const update = useCallback((fn: (db: Database) => Database) => {
     setDb((current) => {
       const next = fn(current)
+      if (next === current) return current
       saveDatabase(window.localStorage, next)
       return next
     })
-  }
+  }, [])
 
   /** 整体替换（导入 JSON 用） */
-  const replace = (next: Database) => {
+  const replace = useCallback((next: Database) => {
     saveDatabase(window.localStorage, next)
     setDb(next)
-  }
+  }, [])
 
   return { db, update, replace }
 }

@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { type Database } from "@/lib/ledger"
-import { isLegacyV2, isValidDatabase, migrateLegacyV2 } from "@/lib/storage"
+import { isLegacyV2, isValidDatabase, migrateLegacyV2, normalizeDatabase } from "@/lib/storage"
 
 interface DataCardProps {
   db: Database
@@ -21,9 +21,10 @@ interface DataCardProps {
 }
 
 function toDatabase(value: unknown): Database | null {
-  if (isValidDatabase(value)) return value
+  // 旧备份可能缺 valuationPoints / autoValuation，normalize 补默认值后再覆盖，保证数据不丢
+  if (isValidDatabase(value)) return normalizeDatabase(value)
   // 早期（无标的库）导出的备份：导入时自动迁移
-  if (isLegacyV2(value)) return migrateLegacyV2(value)
+  if (isLegacyV2(value)) return normalizeDatabase(migrateLegacyV2(value))
   return null
 }
 

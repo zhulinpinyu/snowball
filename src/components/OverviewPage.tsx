@@ -15,7 +15,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import { deltaClass, formatYuan } from "@/lib/format"
+import { deltaClass, formatYuan, todayLocal } from "@/lib/format"
 import { liveSummary, valuationSeries, type Database } from "@/lib/ledger"
 import type { QuoteView } from "@/lib/use-quotes"
 
@@ -30,7 +30,25 @@ interface OverviewPageProps {
   onGoRecord: () => void
 }
 
-/** 总览：实时家庭总资产 + 合计浮动盈亏 + 记录点驱动的估值曲线 */
+interface ChartRow {
+  /** YYYY-MM-DD，或「现在」 */
+  date: string
+  /** 时间轴用的毫秒时间戳（真实日期间距） */
+  ts: number
+  total: number
+}
+
+function dateToTs(date: string): number {
+  const [y, m, d] = date.split("-").map(Number)
+  return new Date(y, m - 1, d).getTime()
+}
+
+function formatTick(ts: number): string {
+  const d = new Date(ts)
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+/** 总览：实时家庭总资产 + 合计浮动盈亏 + 记录点/每日快照驱动的估值曲线 */
 export function OverviewPage({ db, quotes, quoteError, onGoRecord }: OverviewPageProps) {
   const series = valuationSeries(db)
   const live = liveSummary(db, quotes)
@@ -44,7 +62,8 @@ export function OverviewPage({ db, quotes, quoteError, onGoRecord }: OverviewPag
           </EmptyMedia>
           <EmptyTitle>开始记第一笔</EmptyTitle>
           <EmptyDescription>
-            添加基金/股票时输代码即可自动补名称和现价，记下份额与成本；现金账户随时改余额。现价实时刷新，没变的不用管。
+            添加基金/股票时输代码即可自动补名称和现价，记下份额与成本；现金账户随时改余额。
+            之后每次刷新行情会自动记下当天的估值，攒出每天的总资产走势。
           </EmptyDescription>
         </EmptyHeader>
         <Button onClick={onGoRecord}>去记一笔</Button>
@@ -54,10 +73,20 @@ export function OverviewPage({ db, quotes, quoteError, onGoRecord }: OverviewPag
 
   const anyStale = Object.values(quotes).some((q) => q.stale)
   const pl = live.totals.pl
-  const chartData = [
-    ...series.map((s) => ({ date: s.date, total: s.total })),
-    { date: "现在", total: live.totals.assets },
-  ]
+
+  // 采样点按真实时间排布；今天已有采样点就用实时值更新它，否则在末尾追加「现在」
+  const today = todayLocal()
+  const chartData: ChartRow[] = series.map((s) => ({
+    date: s.date,
+    ts: dateToTs(s.date),
+    total: s.total,
+  }))
+  const todayIdx = chartData.findIndex((d) => d.date === today)
+  if (todayIdx >= 0) {
+    chartData[todayIdx] = { ...chartData[todayIdx], total: live.totals.assets }
+  } else if (chartData[chartData.length - 1].date < today) {
+    chartData.push({ date: "现在", ts: dateToTs(today), total: live.totals.assets })
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -89,22 +118,41 @@ export function OverviewPage({ db, quotes, quoteError, onGoRecord }: OverviewPag
       <Card>
         <CardHeader>
           <CardTitle>家庭资产走势</CardTitle>
-          <CardDescription>记录点估值连线（记份额/成本/余额变化时打点），末尾为实时值</CardDescription>
+          <CardDescription>
+            人工记录点 + 每日行情快照按真实日期连线（没打开过的日子不采样），末尾为实时值
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {chartData.length >= 2 ? (
             <ChartContainer config={trendConfig} className="h-56 w-full">
               <LineChart data={chartData} margin={{ left: 8, right: 8 }}>
                 <CartesianGrid vertical={false} />
-                <XAxis dataKey="date" tickLine={false} axisLine={false} />
+                <XAxis
+                  dataKey="ts"
+                  type="number"
+                  scale="time"
+                  domain={["dataMin", "dataMax"]}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={formatTick}
+                />
                 <YAxis tickLine={false} axisLine={false} width={56} />
-                <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      indicator="line"
+                      labelFormatter={(_value, payload) =>
+                        (payload?.[0]?.payload as ChartRow | undefined)?.date ?? ""
+                      }
+                    />
+                  }
+                />
                 <Line dataKey="total" type="monotone" stroke="var(--color-total)" dot />
               </LineChart>
             </ChartContainer>
           ) : (
             <p className="text-muted-foreground py-8 text-center text-sm">
-              只有一笔记录。份额/成本或余额再变化一次并保存，这里就会出现走势。
+              只有一笔记录。刷新一次行情（或再记一次份额/余额）这里就会出现走势。
             </p>
           )}
         </CardContent>

@@ -10,11 +10,15 @@ import {
   deleteAccount,
   recordPosition,
   recordCash,
+  recordValuationPoint,
+  recordDailyValuations,
+  setAutoValuation,
   deletePositionPoint,
   deleteCashPoint,
   deleteTag,
   latestPositionPoint,
   latestCashPoint,
+  valuationPointAsOf,
   asOfTotal,
   valuationSeries,
   liveSummary,
@@ -165,6 +169,100 @@ describe("as-of 估值与曲线", () => {
     expect(series.map((p) => p.date)).toEqual(["2026-08-01", "2026-09-01"])
     expect(series[0].total).toBe(1000 * 1.5 + 20000)
     expect(series[1].total).toBe(1200 * 1.6 + 18000)
+  })
+})
+
+describe("每日估值快照", () => {
+  it("按 (持仓, 行情日期) upsert；价格没变返回原库", () => {
+    let db = seed()
+    const posId = db.positions[0].id
+    db = recordValuationPoint(db, posId, "2026-09-01", 1.6)
+    expect(db.valuationPoints).toHaveLength(1)
+    expect(recordValuationPoint(db, posId, "2026-09-01", 1.6)).toBe(db)
+    db = recordValuationPoint(db, posId, "2026-09-01", 1.7)
+    expect(db.valuationPoints).toHaveLength(1)
+    expect(valuationPointAsOf(db, posId, "2026-09-01")?.price).toBe(1.7)
+  })
+
+  it("快照补价格历史：份额用最近人工点，价格用最近快照，成为曲线采样点", () => {
+    let db = seed() // 2026-08-01 人工：1000 份 / 记录价 1.5，现金 20000
+    const posId = db.positions[0].id
+    db = recordValuationPoint(db, posId, "2026-09-02", 1.8)
+    const series = valuationSeries(db)
+    expect(series.map((p) => p.date)).toEqual(["2026-08-01", "2026-09-02"])
+    expect(series[0].total).toBe(1000 * 1.5 + 20000)
+    expect(series[1].total).toBe(1000 * 1.8 + 20000)
+  })
+
+  it("同一天既有人工记录点又有快照 → 人工记录价优先", () => {
+    let db = seed()
+    const posId = db.positions[0].id
+    db = recordValuationPoint(db, posId, "2026-08-01", 1.9)
+    expect(asOfTotal(db, "2026-08-01").total).toBe(1000 * 1.5 + 20000)
+  })
+
+  it("自动落点只接受真实行情：stale / 无行情日期跳过，关开关不落", () => {
+    const db = seed()
+    const posId = db.positions[0].id
+    expect(
+      recordDailyValuations(db, { [posId]: { price: 1.8, date: "2026-09-02", stale: true } })
+        .valuationPoints
+    ).toHaveLength(0)
+    expect(
+      recordDailyValuations(db, { [posId]: { price: 1.8, date: null, stale: false } })
+        .valuationPoints
+    ).toHaveLength(0)
+    const fresh = recordDailyValuations(db, {
+      [posId]: { price: 1.8, date: "2026-09-02", stale: false },
+    })
+    expect(fresh.valuationPoints).toHaveLength(1)
+    const off = setAutoValuation(db, false)
+    expect(
+      recordDailyValuations(off, { [posId]: { price: 1.8, date: "2026-09-02", stale: false } })
+        .valuationPoints
+    ).toHaveLength(0)
+  })
+
+  it("部分持仓缺价：有价的照落点，缺价的不落", () => {
+    let db = seed()
+    db = addPosition(db, {
+      code: "600519",
+      name: "贵州茅台",
+      kind: "stock",
+      owner: "我",
+      platform: "雪球",
+    })
+    const [fundId, stockId] = db.positions.map((p) => p.id)
+    db = recordPosition(db, stockId, "2026-08-01", 100, 1500, 1600)
+    db = recordDailyValuations(db, {
+      [fundId]: { price: 1.8, date: "2026-09-02", stale: false },
+      [stockId]: { price: 1700, date: "2026-09-02", stale: false },
+    })
+    db = recordDailyValuations(db, { [fundId]: { price: 1.9, date: "2026-09-03", stale: false } })
+    expect(valuationPointAsOf(db, fundId, "2026-09-03")?.price).toBe(1.9)
+    expect(valuationPointAsOf(db, stockId, "2026-09-03")?.date).toBe("2026-09-02")
+  })
+
+  it("还没记过份额的持仓不落快照", () => {
+    let db = seed()
+    db = addPosition(db, {
+      code: "600519",
+      name: "贵州茅台",
+      kind: "stock",
+      owner: "我",
+      platform: "雪球",
+    })
+    const stockId = db.positions[1].id
+    db = recordDailyValuations(db, { [stockId]: { price: 1700, date: "2026-09-02", stale: false } })
+    expect(db.valuationPoints).toHaveLength(0)
+  })
+
+  it("删除持仓连带删除其估值快照", () => {
+    let db = seed()
+    const posId = db.positions[0].id
+    db = recordValuationPoint(db, posId, "2026-09-01", 1.6)
+    db = deletePosition(db, posId)
+    expect(db.valuationPoints).toHaveLength(0)
   })
 })
 

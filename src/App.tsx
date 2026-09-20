@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { ChartPieIcon, RefreshCwIcon, SettingsIcon, SnowflakeIcon, TrendingUpIcon, WalletIcon } from "lucide-react"
 import { OverviewPage } from "@/components/OverviewPage"
 import { AssetsPage } from "@/components/AssetsPage"
@@ -6,7 +6,8 @@ import { BreakdownPage } from "@/components/BreakdownPage"
 import { SettingsPage } from "@/components/SettingsPage"
 import { Button } from "@/components/ui/button"
 import { useDatabase } from "@/lib/use-database"
-import { useQuotes } from "@/lib/use-quotes"
+import { useQuotes, type QuoteView } from "@/lib/use-quotes"
+import { recordDailyValuations } from "@/lib/ledger"
 import { cn } from "@/lib/utils"
 
 type Tab = "overview" | "assets" | "breakdown" | "settings"
@@ -20,7 +21,14 @@ const TAB_ITEMS: { key: Tab; label: string; icon: typeof TrendingUpIcon }[] = [
 
 export default function App() {
   const { db, update, replace } = useDatabase()
-  const { quotes, loading, error, refresh } = useQuotes(db)
+  // 每次行情刷新完成后，把「非回退价」的行情自动落成每日估值快照（可在设置里关）
+  const onFreshQuotes = useCallback(
+    (fresh: Record<string, QuoteView>) => {
+      update((current) => recordDailyValuations(current, fresh))
+    },
+    [update]
+  )
+  const { quotes, loading, error, refresh } = useQuotes(db, onFreshQuotes)
   const [tab, setTab] = useState<Tab>("overview")
 
   const goRecord = () => setTab("assets")

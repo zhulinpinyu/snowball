@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest"
-import { emptyDatabase, addInstrument, addPosition, recordPosition } from "./ledger"
+import { emptyDatabase, addInstrument, addPosition, recordPosition, recordValuationPoint } from "./ledger"
 import {
   saveDatabase,
   loadDatabase,
@@ -115,6 +115,50 @@ describe("localStorage 持久化（含标的库）", () => {
     expect(isValidDatabase(migrated)).toBe(true)
   })
 
+  it("含新增字段的库往返一致（估值快照 + 开关）", () => {
+    let db = emptyDatabase()
+    db = addPosition(db, {
+      code: "000961",
+      name: "天弘沪深300ETF联接A",
+      kind: "fund",
+      owner: "我",
+      platform: "支付宝",
+    })
+    db = recordPosition(db, db.positions[0].id, "2026-08-01", 1000, 1.2, 1.5)
+    db = recordValuationPoint(db, db.positions[0].id, "2026-09-02", 1.8)
+    saveDatabase(ls, db)
+    const loaded = loadDatabase(ls)
+    expect(loaded).toEqual(db)
+    expect(loaded.valuationPoints).toHaveLength(1)
+    expect(loaded.autoValuation).toBe(true)
+  })
+
+  it("【兼容红线】老库缺 valuationPoints/autoValuation 仍判有效，加载后补默认值且数据不丢", () => {
+    const oldShape = {
+      instruments: [{ id: "i1", code: "000961", name: "某基金", kind: "fund" }],
+      positions: [
+        { id: "p1", code: "000961", name: "某基金", kind: "fund", owner: "我", platform: "支付宝" },
+      ],
+      accounts: [{ id: "a1", name: "招行活期", owner: "我", platform: "招商银行" }],
+      positionPoints: [
+        { id: "pp", positionId: "p1", date: "2026-08-01", shares: 1000, costPrice: 1.2, priceAtRecord: 1.5 },
+      ],
+      cashPoints: [{ id: "cp", accountId: "a1", date: "2026-08-01", balance: 20000 }],
+      owners: ["我"],
+      platforms: ["支付宝", "招商银行"],
+    }
+    // 关键：老形状必须判有效，否则 loadDatabase 会走 emptyDatabase() 清库
+    expect(isValidDatabase(oldShape)).toBe(true)
+    ls.setItem(STORAGE_KEY, JSON.stringify(oldShape))
+    const loaded = loadDatabase(ls)
+    expect(loaded.positions).toHaveLength(1)
+    expect(loaded.accounts).toHaveLength(1)
+    expect(loaded.positionPoints).toHaveLength(1)
+    expect(loaded.cashPoints).toHaveLength(1)
+    expect(loaded.valuationPoints).toEqual([])
+    expect(loaded.autoValuation).toBe(true)
+  })
+
   it("损坏的 JSON 加载为空库", () => {
     ls.setItem(STORAGE_KEY, "{oops")
     expect(loadDatabase(ls)).toEqual(emptyDatabase())
@@ -156,5 +200,19 @@ describe("深度校验", () => {
       platforms: ["支付宝"],
     }
     expect(isValidDatabase(ok)).toBe(true)
+  })
+
+  it("新增字段存在但格式错 → 判无效（防止坏数据进库）", () => {
+    const base = {
+      instruments: [],
+      positions: [],
+      accounts: [],
+      positionPoints: [],
+      cashPoints: [],
+      owners: [],
+      platforms: [],
+    }
+    expect(isValidDatabase({ ...base, valuationPoints: [{ id: "v1" }] })).toBe(false)
+    expect(isValidDatabase({ ...base, autoValuation: "yes" })).toBe(false)
   })
 })

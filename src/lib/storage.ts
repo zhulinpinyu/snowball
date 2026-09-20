@@ -74,10 +74,21 @@ function validCashPoints(a: unknown): boolean {
     a.every((x) => isRecord(x) && isStr(x.id) && isStr(x.accountId) && isStr(x.date) && isNum(x.balance))
   )
 }
+function validValuationPoints(a: unknown): boolean {
+  return (
+    Array.isArray(a) &&
+    a.every(
+      (x) => isRecord(x) && isStr(x.id) && isStr(x.positionId) && isStr(x.date) && isNum(x.price)
+    )
+  )
+}
 
 /**
  * 数据形状是否为 v1（Spec 0002）的库（含标的库 instruments），并逐条校验。
  * 更早 MVP 原型（snapshots/holdings 结构）不符合本形状，会被判无效。
+ *
+ * 新增字段（valuationPoints / autoValuation）是可选校验：老库/老备份没有它们也判有效，
+ * 交给 normalizeDatabase 补默认值 —— 绝不能因缺新字段而判无效，否则会走清库分支丢数据。
  */
 export function isValidDatabase(value: unknown): value is Database {
   if (!isRecord(value)) return false
@@ -87,9 +98,23 @@ export function isValidDatabase(value: unknown): value is Database {
     validAccounts(value.accounts) &&
     validPositionPoints(value.positionPoints) &&
     validCashPoints(value.cashPoints) &&
+    (value.valuationPoints === undefined || validValuationPoints(value.valuationPoints)) &&
+    (value.autoValuation === undefined || typeof value.autoValuation === "boolean") &&
     isStringArray(value.owners) &&
     isStringArray(value.platforms)
   )
+}
+
+/**
+ * 补齐新增字段的默认值（老库/老备份缺字段时）：
+ * valuationPoints → 空数组；autoValuation → 开启（仅显式 false 才关闭）。
+ */
+export function normalizeDatabase(db: Database): Database {
+  return {
+    ...db,
+    valuationPoints: Array.isArray(db.valuationPoints) ? db.valuationPoints : [],
+    autoValuation: db.autoValuation !== false,
+  }
 }
 
 /** 是否是"还没有标的库"的旧形状（持仓内嵌 code/name/kind，无 instruments 字段） */
@@ -136,6 +161,8 @@ export function migrateLegacyV2(v2: V2Database): Database {
     accounts: v2.accounts,
     positionPoints: v2.positionPoints,
     cashPoints: v2.cashPoints,
+    valuationPoints: [],
+    autoValuation: true,
     owners: v2.owners,
     platforms: v2.platforms,
   }
@@ -153,10 +180,10 @@ export function loadDatabase(ls: Storage): Database {
   try {
     const parsed: unknown = JSON.parse(raw)
     if (isValidDatabase(parsed)) {
-      return parsed
+      return normalizeDatabase(parsed)
     }
     if (isLegacyV2(parsed)) {
-      return migrateLegacyV2(parsed)
+      return normalizeDatabase(migrateLegacyV2(parsed))
     }
   } catch {
     // 数据损坏则回到空库
